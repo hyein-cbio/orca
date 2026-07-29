@@ -249,7 +249,8 @@ async function dispatchCommittingEnterChord(
   page: Page,
   modifiers: number,
   redispatchedModifiers: number,
-  redispatchAfterKeyup: boolean
+  redispatchAfterKeyup: boolean,
+  redispatchTimestampOffset = 0
 ): Promise<void> {
   const timestamp = Date.now() / 1000
   const composingKeydown = session.send('Input.dispatchKeyEvent', {
@@ -270,7 +271,7 @@ async function dispatchCommittingEnterChord(
       key: 'Enter',
       code: 'Enter',
       modifiers: redispatchedModifiers,
-      timestamp,
+      timestamp: timestamp + redispatchTimestampOffset,
       windowsVirtualKeyCode: 13,
       nativeVirtualKeyCode: 13,
       text: '',
@@ -282,7 +283,7 @@ async function dispatchCommittingEnterChord(
       key: 'Enter',
       code: 'Enter',
       modifiers: redispatchedModifiers,
-      timestamp,
+      timestamp: timestamp + redispatchTimestampOffset,
       windowsVirtualKeyCode: 13,
       nativeVirtualKeyCode: 13
     })
@@ -294,6 +295,28 @@ async function dispatchCommittingEnterChord(
   await Promise.all([composingKeydown, commit, balancingKeyup()])
   await page.waitForTimeout(80)
   await redispatch()
+}
+
+type HeldModifier = {
+  key: 'Shift' | 'Control'
+  code: 'ShiftLeft' | 'ControlLeft'
+  keyCode: 16 | 17
+  modifiers: number
+}
+
+async function dispatchHeldModifier(
+  session: CDPSession,
+  modifier: HeldModifier,
+  type: 'rawKeyDown' | 'keyUp'
+): Promise<void> {
+  await session.send('Input.dispatchKeyEvent', {
+    type,
+    key: modifier.key,
+    code: modifier.code,
+    modifiers: type === 'rawKeyDown' ? modifier.modifiers : 0,
+    windowsVirtualKeyCode: modifier.keyCode,
+    nativeVirtualKeyCode: modifier.keyCode
+  })
 }
 
 async function dispatchPlainEnter(session: CDPSession): Promise<void> {
@@ -327,6 +350,8 @@ type CommittingEnterChordCase = {
   slug: string
   modifiers: number
   redispatchedModifiers?: number
+  redispatchTimestampOffset?: number
+  preHeldModifier?: HeldModifier
   assertOutcome: (page: Page) => Promise<void>
   expectedAfterPlainEnter: {
     received: string
@@ -404,6 +429,32 @@ const COMMITTING_ENTER_CHORDS: CommittingEnterChordCase[] = [
       received: '하 하 하\u001b\r\r',
       submitted: ['하 하 하\u001b', '']
     }
+  },
+  {
+    name: 'pre-held Shift+Enter with modifier-lost redispatch',
+    slug: 'pre-held-shift-enter-bare-redispatch',
+    modifiers: 8,
+    redispatchedModifiers: 0,
+    redispatchTimestampOffset: 0.01,
+    preHeldModifier: { key: 'Shift', code: 'ShiftLeft', keyCode: 16, modifiers: 8 },
+    assertOutcome: assertShiftOutcome,
+    expectedAfterPlainEnter: {
+      received: '하 하 하\u001b\r\r',
+      submitted: ['하 하 하\u001b', '']
+    }
+  },
+  {
+    name: 'pre-held Ctrl+Enter with modifier-lost redispatch',
+    slug: 'pre-held-ctrl-enter-bare-redispatch',
+    modifiers: 2,
+    redispatchedModifiers: 0,
+    redispatchTimestampOffset: 0.01,
+    preHeldModifier: { key: 'Control', code: 'ControlLeft', keyCode: 17, modifiers: 2 },
+    assertOutcome: assertCtrlOutcome,
+    expectedAfterPlainEnter: {
+      received: '하 하 하\u001b[13;5u\r',
+      submitted: ['하 하 하\u001b[13;5u']
+    }
   }
 ]
 
@@ -439,14 +490,21 @@ test.describe('Korean IME terminal committing Enter chords', () => {
           await commitSyllableAndSpace(session, orcaPage)
           await composeHangulSyllable(session, orcaPage)
           await commitSyllableAndSpace(session, orcaPage)
+          if (chord.preHeldModifier) {
+            await dispatchHeldModifier(session, chord.preHeldModifier, 'rawKeyDown')
+          }
           await composeHangulSyllable(session, orcaPage)
           await dispatchCommittingEnterChord(
             session,
             orcaPage,
             chord.modifiers,
             chord.redispatchedModifiers ?? chord.modifiers,
-            redispatchAfterKeyup
+            redispatchAfterKeyup,
+            chord.redispatchTimestampOffset
           )
+          if (chord.preHeldModifier) {
+            await dispatchHeldModifier(session, chord.preHeldModifier, 'keyUp')
+          }
 
           await chord.assertOutcome(orcaPage)
           await dispatchPlainEnter(session)

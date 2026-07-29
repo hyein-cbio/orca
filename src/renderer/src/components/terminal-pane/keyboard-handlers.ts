@@ -276,12 +276,23 @@ export function useTerminalKeyboardShortcuts({
     // held. To distinguish left vs right Option, we record the Option key's
     // location from its own keydown event and clear it on keyup.
     let optionKeyLocation = 0
-    let activeImeEnterModifier: ReturnType<typeof getTerminalImeModifiedEnterKind> = null
+    const heldImeEnterModifiers = new Set<'shift' | 'ctrl'>()
     const nativeOnlyShortcutTracker = createTerminalNativeOnlyShortcutTracker()
     const deferredNewlineSender = createTerminalImeDeferredNewlineSender()
     const modifiedEnterChordOwner = createTerminalImeModifiedEnterChordOwner()
+    const getHeldImeEnterModifier = () =>
+      heldImeEnterModifiers.size === 1
+        ? (heldImeEnterModifiers.values().next().value ?? null)
+        : null
+    const getImeEnterModifier = (event: KeyboardEvent) => {
+      const eventKind = getTerminalImeModifiedEnterKind(event)
+      if (eventKind || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
+        return eventKind
+      }
+      return getHeldImeEnterModifier()
+    }
     const getModifiedEnterChord = (event: KeyboardEvent) => {
-      const kind = getTerminalImeModifiedEnterKind(event) ?? activeImeEnterModifier
+      const kind = getImeEnterModifier(event)
       return kind ? { kind, code: event.code, timeStamp: event.timeStamp } : null
     }
     const onModifierDown = (e: KeyboardEvent): void => {
@@ -295,9 +306,9 @@ export function useTerminalKeyboardShortcuts({
         if (
           pane &&
           (!keyboardScope || keyboardEventBelongsToScope(e, keyboardScope)) &&
-          hasPendingTerminalImeComposition(pane.terminal.element)
+          !isEditableTarget(e.target)
         ) {
-          activeImeEnterModifier = e.key === 'Shift' ? 'shift' : 'ctrl'
+          heldImeEnterModifiers.add(e.key === 'Shift' ? 'shift' : 'ctrl')
         }
       }
     }
@@ -728,19 +739,18 @@ export function useTerminalKeyboardShortcuts({
       if (e.key === 'Alt') {
         optionKeyLocation = 0
       }
-      if (
-        (e.key === 'Shift' && activeImeEnterModifier === 'shift') ||
-        (e.key === 'Control' && activeImeEnterModifier === 'ctrl')
-      ) {
-        const kind = activeImeEnterModifier
-        activeImeEnterModifier = null
+      const releasedImeEnterModifier =
+        e.key === 'Shift' ? 'shift' : e.key === 'Control' ? 'ctrl' : null
+      if (releasedImeEnterModifier) {
+        const kind = releasedImeEnterModifier
+        heldImeEnterModifiers.delete(kind)
         modifiedEnterChordOwner.release({ kind, code: e.code, timeStamp: e.timeStamp })
       }
       if (e.key !== 'Enter') {
         return
       }
 
-      const modifiedEnterKind = getTerminalImeModifiedEnterKind(e) ?? activeImeEnterModifier
+      const modifiedEnterKind = getImeEnterModifier(e)
       if (isWindows && modifiedEnterKind && isTerminalImeEnterKeyUp(e)) {
         const chord = { kind: modifiedEnterKind, code: e.code, timeStamp: e.timeStamp }
         if (modifiedEnterChordOwner.absorb(chord)) {
@@ -753,7 +763,11 @@ export function useTerminalKeyboardShortcuts({
 
         const manager = managerRef.current
         const keyboardScope = keyboardScopeRef.current
-        if (manager && (!keyboardScope || keyboardEventBelongsToScope(e, keyboardScope))) {
+        if (
+          manager &&
+          !isEditableTarget(e.target) &&
+          (!keyboardScope || keyboardEventBelongsToScope(e, keyboardScope))
+        ) {
           const pane = manager.getActivePane() ?? manager.getPanes()[0]
           if (pane && hasPendingTerminalImeComposition(pane.terminal.element)) {
             const action = resolveShortcutEvent({
@@ -812,7 +826,7 @@ export function useTerminalKeyboardShortcuts({
 
     const onNativeOnlyBlur = (): void => {
       nativeOnlyShortcutTracker.clear()
-      activeImeEnterModifier = null
+      heldImeEnterModifiers.clear()
       modifiedEnterChordOwner.clear()
       deferredNewlineSender.clearRedispatchedEnters()
     }
