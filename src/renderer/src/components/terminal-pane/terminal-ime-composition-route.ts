@@ -7,6 +7,7 @@ export const XTERM_COMPOSITION_SESSION_END_EVENT = 'xterm-composition-session-en
 type CompositionSessionDetail = {
   id: number
   data?: string
+  dataPendingReconciliation?: boolean
 }
 
 type CapturedCompositionSession = {
@@ -40,7 +41,8 @@ function getCompositionDetail(event: Event): CompositionSessionDetail | null {
   }
   return {
     id: detail.id!,
-    data: typeof detail.data === 'string' ? detail.data : undefined
+    data: typeof detail.data === 'string' ? detail.data : undefined,
+    dataPendingReconciliation: detail.dataPendingReconciliation === true
   }
 }
 
@@ -89,6 +91,7 @@ export function installTerminalImeCompositionRoute(args: {
     adjustPendingCompositionCount(terminalElement, -1)
     if (
       disposed ||
+      detail.dataPendingReconciliation ||
       !detail.data ||
       captured.ptyId === null ||
       args.getCurrentTransport() !== args.capturedTransport ||

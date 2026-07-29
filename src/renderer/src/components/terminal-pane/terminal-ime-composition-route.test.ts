@@ -14,11 +14,16 @@ function createTransport(ptyId: string | null): PtyTransport {
   } as unknown as PtyTransport
 }
 
-function sessionEvent(type: string, id: number, data?: string): CustomEvent {
+function sessionEvent(
+  type: string,
+  id: number,
+  data?: string,
+  dataPendingReconciliation = false
+): CustomEvent {
   return new CustomEvent(type, {
     bubbles: true,
     cancelable: true,
-    detail: { id, data }
+    detail: { id, data, dataPendingReconciliation }
   })
 }
 
@@ -97,6 +102,16 @@ describe('installTerminalImeCompositionRoute', () => {
     harness.end(1, '한')
 
     expect(harness.input).toHaveBeenCalledExactlyOnceWith('한')
+  })
+
+  it('settles a session without forwarding bytes still pending xterm reconciliation', () => {
+    const harness = createHarness()
+    harness.start(1)
+
+    harness.element.dispatchEvent(sessionEvent(XTERM_COMPOSITION_SESSION_END_EVENT, 1, '앙', true))
+
+    expect(harness.input).not.toHaveBeenCalled()
+    expect(hasPendingTerminalImeComposition(harness.element)).toBe(false)
   })
 
   it('keeps every captured session until its delayed completion', () => {

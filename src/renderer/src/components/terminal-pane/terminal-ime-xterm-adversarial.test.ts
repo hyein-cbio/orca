@@ -49,12 +49,30 @@ function start(textarea: HTMLTextAreaElement, text: string): void {
   textarea.setSelectionRange(textarea.value.length, textarea.value.length)
 }
 
-function timerCount(terminal: EsmTerminal): number {
-  return (
+function compositionState(terminal: EsmTerminal): {
+  endTimer?: unknown
+  positionTimer?: unknown
+  timers: Set<unknown>
+  viewTimer?: unknown
+} {
+  const helper = (
     terminal as unknown as {
-      _core: { _compositionHelper: { _compositionTimers: Set<unknown> } }
+      _core: {
+        _compositionHelper: {
+          _compositionEndTimer?: unknown
+          _compositionPositionTimer?: unknown
+          _compositionTimers: Set<unknown>
+          _compositionViewTimer?: unknown
+        }
+      }
     }
-  )._core._compositionHelper._compositionTimers.size
+  )._core._compositionHelper
+  return {
+    endTimer: helper._compositionEndTimer,
+    positionTimer: helper._compositionPositionTimer,
+    timers: helper._compositionTimers,
+    viewTimer: helper._compositionViewTimer
+  }
 }
 
 describe.each([
@@ -68,6 +86,7 @@ describe.each([
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
     document.body.replaceChildren()
   })
@@ -92,19 +111,128 @@ describe.each([
     terminal.dispose()
   })
 
+  it('accepts a repeated no-update commit after textarea progress', async () => {
+    const { emitted, terminal, textarea } = openTerminal(TerminalType)
+    start(textarea, '가')
+    composition(textarea, 'compositionend', '가')
+    composition(textarea, 'compositionstart')
+    textarea.value = '가가'
+    textarea.setSelectionRange(2, 2)
+    composition(textarea, 'compositionend', '가')
+    await nextEventLoop()
+
+    expect(emitted.join('')).toBe('가가')
+    terminal.dispose()
+  })
+
+  it('accepts repeated no-update data when native progress follows the end event', async () => {
+    const { emitted, terminal, textarea } = openTerminal(TerminalType)
+    const lifecycle: string[] = []
+    textarea.addEventListener('xterm-composition-transaction-accepted', () =>
+      lifecycle.push('accepted')
+    )
+    textarea.addEventListener('xterm-composition-transaction-settled', () =>
+      lifecycle.push('settled')
+    )
+    start(textarea, '가')
+    composition(textarea, 'compositionend', '가')
+    composition(textarea, 'compositionstart')
+    composition(textarea, 'compositionend', '가')
+    textarea.value = '가가'
+    textarea.setSelectionRange(2, 2)
+    await nextEventLoop()
+
+    expect(emitted.join('')).toBe('가가')
+    expect(lifecycle).toEqual(['accepted', 'settled', 'accepted', 'settled'])
+    terminal.dispose()
+  })
+
+  it('rejects a data-less stale end before restarted progress', async () => {
+    const { emitted, terminal, textarea } = openTerminal(TerminalType)
+    start(textarea, 'A')
+    composition(textarea, 'compositionend', 'A')
+    composition(textarea, 'compositionstart')
+    composition(textarea, 'compositionend')
+    await nextEventLoop()
+    composition(textarea, 'compositionupdate', 'B')
+    textarea.value = 'AB'
+    textarea.setSelectionRange(2, 2)
+    composition(textarea, 'compositionend', 'B')
+    await nextEventLoop()
+
+    expect(emitted.join('')).toBe('AB')
+    terminal.dispose()
+  })
+
+  it('rejects a stale end after update but before textarea progress', async () => {
+    const { emitted, terminal, textarea } = openTerminal(TerminalType)
+    start(textarea, 'A')
+    composition(textarea, 'compositionend', 'A')
+    composition(textarea, 'compositionstart')
+    composition(textarea, 'compositionupdate', 'B')
+    composition(textarea, 'compositionend', 'A')
+    await nextEventLoop()
+    textarea.value = 'AB'
+    textarea.setSelectionRange(2, 2)
+    composition(textarea, 'compositionend', 'B')
+    await nextEventLoop()
+
+    expect(emitted.join('')).toBe('AB')
+    terminal.dispose()
+  })
+
   it('bounds tracked timers during same-task transaction bursts', async () => {
     const { emitted, terminal, textarea } = openTerminal(TerminalType)
     let maximumTimerCount = 0
     for (let index = 0; index < 256; index++) {
       start(textarea, '가')
       composition(textarea, 'compositionend', '가')
-      maximumTimerCount = Math.max(maximumTimerCount, timerCount(terminal))
+      maximumTimerCount = Math.max(maximumTimerCount, compositionState(terminal).timers.size)
     }
     await nextEventLoop()
 
     expect(emitted.join('')).toBe('가'.repeat(256))
     expect(maximumTimerCount).toBeLessThanOrEqual(4)
-    expect(timerCount(terminal)).toBe(0)
+    expect(compositionState(terminal).timers.size).toBe(0)
+    terminal.dispose()
+  })
+
+  it('keeps newer timer slots when canceled callbacks are forced', () => {
+    const { terminal, textarea } = openTerminal(TerminalType)
+    const callbacks: (() => void)[] = []
+    const cleared = new Set<object>()
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: () => void) => {
+      const token = {}
+      callbacks.push(() => {
+        if (!cleared.has(token)) {
+          callback()
+        }
+      })
+      return token
+    }) as typeof setTimeout)
+    vi.spyOn(globalThis, 'clearTimeout').mockImplementation(((token: object) => {
+      cleared.add(token)
+    }) as typeof clearTimeout)
+
+    start(textarea, 'A')
+    const oldState = compositionState(terminal)
+    composition(textarea, 'compositionstart')
+    composition(textarea, 'compositionend', 'A')
+    const staleEndTimer = compositionState(terminal).endTimer
+    composition(textarea, 'compositionupdate', 'B')
+    const newState = compositionState(terminal)
+    for (const callback of callbacks) {
+      callback()
+    }
+
+    expect(cleared).toContain(oldState.positionTimer)
+    expect(cleared).toContain(oldState.viewTimer)
+    expect(cleared).toContain(staleEndTimer)
+    expect(newState.positionTimer).not.toBe(oldState.positionTimer)
+    expect(newState.viewTimer).not.toBe(oldState.viewTimer)
+    expect(compositionState(terminal).positionTimer).toBe(newState.positionTimer)
+    expect(compositionState(terminal).viewTimer).toBe(newState.viewTimer)
+    expect(compositionState(terminal).timers.size).toBe(0)
     terminal.dispose()
   })
 })
