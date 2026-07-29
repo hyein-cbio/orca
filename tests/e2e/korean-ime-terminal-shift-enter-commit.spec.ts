@@ -352,6 +352,7 @@ type CommittingEnterChordCase = {
   redispatchedModifiers?: number
   redispatchTimestampOffset?: number
   preHeldModifier?: HeldModifier
+  windowsOnly?: boolean
   assertOutcome: (page: Page) => Promise<void>
   expectedAfterPlainEnter: {
     received: string
@@ -437,6 +438,7 @@ const COMMITTING_ENTER_CHORDS: CommittingEnterChordCase[] = [
     redispatchedModifiers: 0,
     redispatchTimestampOffset: 0.01,
     preHeldModifier: { key: 'Shift', code: 'ShiftLeft', keyCode: 16, modifiers: 8 },
+    windowsOnly: true,
     assertOutcome: assertShiftOutcome,
     expectedAfterPlainEnter: {
       received: '하 하 하\u001b\r\r',
@@ -450,6 +452,7 @@ const COMMITTING_ENTER_CHORDS: CommittingEnterChordCase[] = [
     redispatchedModifiers: 0,
     redispatchTimestampOffset: 0.01,
     preHeldModifier: { key: 'Control', code: 'ControlLeft', keyCode: 17, modifiers: 2 },
+    windowsOnly: true,
     assertOutcome: assertCtrlOutcome,
     expectedAfterPlainEnter: {
       received: '하 하 하\u001b[13;5u\r',
@@ -467,6 +470,7 @@ test.describe('Korean IME terminal committing Enter chords', () => {
         orcaPage,
         testRepoPath
       }, testInfo) => {
+        test.skip(chord.windowsOnly && process.platform !== 'win32', 'Windows IME ownership')
         await waitForSessionReady(orcaPage)
         await waitForActiveWorktree(orcaPage)
         await ensureTerminalVisible(orcaPage)
