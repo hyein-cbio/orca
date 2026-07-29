@@ -45,15 +45,15 @@ timer drainage, and disposal.
 
 ## IME and terminal validation
 
-| Gate | Result |
-| --- | --- |
-| Exact #11011 historical suite | 42/42 passed |
-| Exact #11177 ten-file historical matrix | 127/127 passed |
-| #11052 Enter/newline matrix | 3 files, 49/49 passed |
-| Current combined IME matrix | 14 files, 222/222 passed |
-| Full verifier A adversarial oracle | 14/14 passed |
-| Focused tracked P2/P3 CJS+ESM regressions | 4/4 passed |
-| Broad terminal-pane suite | 201 files, 2,677/2,677 passed |
+| Gate                                      | Result                        |
+| ----------------------------------------- | ----------------------------- |
+| Exact #11011 historical suite             | 42/42 passed                  |
+| Exact #11177 ten-file historical matrix   | 127/127 passed                |
+| #11052 Enter/newline matrix               | 3 files, 49/49 passed         |
+| Current combined IME matrix               | 14 files, 222/222 passed      |
+| Full verifier A adversarial oracle        | 14/14 passed                  |
+| Focused tracked P2/P3 CJS+ESM regressions | 4/4 passed                    |
+| Broad terminal-pane suite                 | 201 files, 2,677/2,677 passed |
 
 The combined matrix covers accepted/settled restarts, stale/duplicate ends,
 Korean/Japanese/Chinese reconciliation, won/backtick forwarding, Enter and
@@ -67,11 +67,11 @@ CJS, and production esbuild ESM. The installed package reconstructed from the
 committed pnpm patch matches the build/package fixture byte-for-byte for the
 four artifacts and all modified upstream sources.
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `lib/xterm.js` | `c624587a60f1ed497255262c8d894d7e83e7345e6477be1167a0531b56aedfe8` |
-| `lib/xterm.mjs` | `53e259559fb78c996ad5d3cfd608a8e77285e3d39b4f445719ec2ce4eea1b6e0` |
-| `lib/xterm.js.map` | `ecb49132c05a0042b563b2434756a985806cb58f024ceecec698f8cec232f509` |
+| Artifact            | SHA-256                                                            |
+| ------------------- | ------------------------------------------------------------------ |
+| `lib/xterm.js`      | `c624587a60f1ed497255262c8d894d7e83e7345e6477be1167a0531b56aedfe8` |
+| `lib/xterm.mjs`     | `53e259559fb78c996ad5d3cfd608a8e77285e3d39b4f445719ec2ce4eea1b6e0` |
+| `lib/xterm.js.map`  | `ecb49132c05a0042b563b2434756a985806cb58f024ceecec698f8cec232f509` |
 | `lib/xterm.mjs.map` | `5413dad5ed07bf66a8d382e0e3da1cb3b41578f34a275e1dc5e47cbc4ae0054a` |
 
 Both maps contain the exact rebuilt `CompositionHelper.ts` sources content

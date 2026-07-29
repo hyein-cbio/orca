@@ -68,17 +68,17 @@ R3 patch removes them: `git show --check`, `git diff --check HEAD^ HEAD`, and wo
 
 ## IME and terminal validation
 
-| Gate | Result |
-| --- | --- |
-| Exact #11011 historical suite | 42/42 passed |
-| Exact #11177 ten-file historical matrix | 127/127 passed |
-| Exact inherited #11052 Enter/newline cases | 49/49 passed |
-| Current #11052/route set with R3 reconciliation test | 50/50 passed |
-| Current combined IME matrix | 14 files, 233/233 passed |
-| Verifier A R2 + verifier B + R1 oracles | 42/42 passed |
-| Focused tracked CJS/ESM and route regressions | 27/27 passed |
-| Broad terminal-pane suite | 201 files, 2,688/2,688 passed |
-| Verifier B R2 native Linux IBus shared local-PTY path | 60/60 exact sequences passed |
+| Gate                                                  | Result                        |
+| ----------------------------------------------------- | ----------------------------- |
+| Exact #11011 historical suite                         | 42/42 passed                  |
+| Exact #11177 ten-file historical matrix               | 127/127 passed                |
+| Exact inherited #11052 Enter/newline cases            | 49/49 passed                  |
+| Current #11052/route set with R3 reconciliation test  | 50/50 passed                  |
+| Current combined IME matrix                           | 14 files, 233/233 passed      |
+| Verifier A R2 + verifier B + R1 oracles               | 42/42 passed                  |
+| Focused tracked CJS/ESM and route regressions         | 27/27 passed                  |
+| Broad terminal-pane suite                             | 201 files, 2,688/2,688 passed |
+| Verifier B R2 native Linux IBus shared local-PTY path | 60/60 exact sequences passed  |
 
 The combined matrix covers accepted/settled immediate restarts, stale and duplicate ends,
 Korean final-consonant transfer, Japanese/Chinese ordering, #11052 Enter/deferred newline,
@@ -92,11 +92,11 @@ production esbuild ESM. The committed pnpm patch applies to the matching pristin
 the reconstructed package, installed package, and synthetic-merge installed package match
 byte-for-byte for all modified source and generated artifacts.
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `lib/xterm.js` | `605f406ca62d58e3bdc4367a53b338a0504ef023d4b67d9ce55a0ebe4ef6e575` |
-| `lib/xterm.mjs` | `3073b72926335549c5b8b3549da091035be489c774e08f2b71780b92a00db6dc` |
-| `lib/xterm.js.map` | `1e2492bd1fbe8147dd9b6e47c875e4b11478c9f42c5cb24b27b8bb54482d8189` |
+| Artifact            | SHA-256                                                            |
+| ------------------- | ------------------------------------------------------------------ |
+| `lib/xterm.js`      | `605f406ca62d58e3bdc4367a53b338a0504ef023d4b67d9ce55a0ebe4ef6e575` |
+| `lib/xterm.mjs`     | `3073b72926335549c5b8b3549da091035be489c774e08f2b71780b92a00db6dc` |
+| `lib/xterm.js.map`  | `1e2492bd1fbe8147dd9b6e47c875e4b11478c9f42c5cb24b27b8bb54482d8189` |
 | `lib/xterm.mjs.map` | `851ad7e138f5a73a7ae74a404269a9a5cf1fd618c7c13db856f0b345499a09bb` |
 
 Both maps contain the exact rebuilt `CompositionHelper.ts` sources content with SHA-256
