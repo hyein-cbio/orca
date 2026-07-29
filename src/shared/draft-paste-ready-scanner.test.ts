@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createDraftPasteReadyScanner } from './draft-paste-ready-scanner'
+import { createForceGc, resolveForcedGc } from './forced-gc-for-retention-tests'
 
 const DECSET_BRACKETED_PASTE = '\x1b[?2004h'
 const SHOW_CURSOR = '\x1b[?25h'
@@ -134,5 +135,34 @@ describe('createDraftPasteReadyScanner', () => {
         armQuietTimer: false
       })
     })
+  })
+})
+
+// The 512-char rings live in the scanner closure — one scanner per pane
+// waiting to deliver a startup draft — so an attached slice pins a whole PTY
+// chunk per waiter instead of the 512 chars the ring documents.
+describe('draft paste scanner retention', () => {
+  const forcedGc = resolveForcedGc()
+  const itWithGc = forcedGc ? it : it.skip
+  itWithGc('does not pin the source chunk behind the recent rings', () => {
+    const chunkChars = 16 * 1024
+    const waiters = 512
+    const forceGc = createForceGc(forcedGc!)
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    const scanners = Array.from({ length: waiters }, (_unused, index) => {
+      const scanner = createDraftPasteReadyScanner('codex-composer-prompt')
+      // A distinct chunk per waiter. Sharing one would leave a single parent
+      // alive and pass whether or not the rings are detached.
+      scanner.observe(`${DECSET_BRACKETED_PASTE}${'x'.repeat(chunkChars)}pane-${index}`)
+      return scanner
+    })
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    // The rings must still detect the prompt glyph on the next chunk.
+    expect(scanners[0]!.observe(CODEX_PROMPT)).toEqual({ ready: true, armQuietTimer: false })
+    // 8 MiB of source chunks stay alive if the rings are attached.
+    expect(retainedMiB).toBeLessThan(2)
   })
 })

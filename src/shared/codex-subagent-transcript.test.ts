@@ -9,6 +9,7 @@ import {
   reconcileCodexSubagentTranscript
 } from './codex-subagent-transcript'
 import { codexRosterToSnapshots, type CodexSubagentRoster } from './codex-subagent-roster'
+import { createForceGc, resolveForcedGc } from './forced-gc-for-retention-tests'
 
 const CHILD_ID = '019fa65f-3144-7151-9c02-cff7a28f316f'
 
@@ -154,5 +155,38 @@ describe('Codex subagent transcript reconciliation', () => {
 
     expect(hasTrackedCodexTranscriptSubagents(state)).toBe(false)
     expect(roster.size).toBe(0)
+  })
+
+  // The trailing partial line is parked per cursor in
+  // codexSubagentTranscriptByPaneKey until the next poll, and `split` yields
+  // slices of the up-to-1 MiB read buffer, so an attached carry pins a whole
+  // buffer per tracked pane.
+  const forcedGc = resolveForcedGc()
+  const itWithGc = forcedGc ? it : it.skip
+  itWithGc('does not pin the read buffer behind a carried partial line', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'codex-subagent-transcript-retention-'))
+    dirs.push(dir)
+    const forceGc = createForceGc(forcedGc!)
+    const panes = 128
+    const bulkLine = JSON.stringify({ type: 'event_msg', payload: { type: 'x'.repeat(500_000) } })
+
+    const states = Array.from({ length: panes }, (_unused, index) => {
+      const parentPath = join(dir, `rollout-parent-${index}.jsonl`)
+      // Trailing partial line (no newline) is what gets carried.
+      writeFileSync(parentPath, `${jsonl([activity('started')])}${bulkLine}\n{"partial":${index}`)
+      return { state: createCodexSubagentTranscriptState(), parentPath }
+    })
+
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    for (const { state, parentPath } of states) {
+      reconcileCodexSubagentTranscript(state, new Map(), parentPath)
+    }
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    expect(states[0]!.state.parent.carry).toBe('{"partial":0')
+    // ~64 MiB of read buffers stay alive if the carries are still attached.
+    expect(retainedMiB).toBeLessThan(8)
   })
 })

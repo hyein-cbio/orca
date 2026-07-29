@@ -1,3 +1,4 @@
+import { detachString } from './detached-string'
 import type { DraftPasteReadySignal } from './tui-agent-config'
 
 // Why: agents enable bracketed paste (DECSET 2004) before their composer is
@@ -12,6 +13,7 @@ const CODEX_COMPOSER_PROMPT = '›'
 // racing the composer mount under slow/noisy startup. mimo-code uses the same
 // signal by parity; the quiet-window fallback covers any agent that differs.
 const DECTCEM_SHOW_CURSOR = '\x1b[?25h'
+const RING_CHARS = 512
 
 export type DraftPasteReadyScanResult = {
   /** The agent-specific ready signal fired — caller should deliver the paste now. */
@@ -60,7 +62,10 @@ export function createDraftPasteReadyScanner(readySignal: DraftPasteReadySignal)
   return {
     observe(data: string): DraftPasteReadyScanResult {
       const combined = recent + data
-      recent = combined.slice(-512)
+      // Detached: both rings survive until the next chunk (and past settle, until
+      // the scanner itself is dropped), so an attached slice would pin a whole
+      // PTY chunk per waiting pane instead of the 512 chars the ring promises.
+      recent = detachString(combined.slice(-RING_CHARS))
       if (!saw2004) {
         const markerIndex = combined.indexOf(DECSET_BRACKETED_PASTE)
         if (markerIndex === -1) {
@@ -71,7 +76,7 @@ export function createDraftPasteReadyScanner(readySignal: DraftPasteReadySignal)
         if (signalMarker !== null && postHandshakeChunk.includes(signalMarker)) {
           return { ready: true, armQuietTimer: false }
         }
-        postHandshakeRecent = postHandshakeChunk.slice(-512)
+        postHandshakeRecent = detachString(postHandshakeChunk.slice(-RING_CHARS))
       } else {
         if (
           signalMarker !== null &&
@@ -79,7 +84,7 @@ export function createDraftPasteReadyScanner(readySignal: DraftPasteReadySignal)
         ) {
           return { ready: true, armQuietTimer: false }
         }
-        postHandshakeRecent = (postHandshakeRecent + data).slice(-512)
+        postHandshakeRecent = detachString((postHandshakeRecent + data).slice(-RING_CHARS))
       }
       // Why: marker-based signals (Codex glyph, opencode show-cursor) must NOT
       // arm the quiet window. opencode goes silent for ~1.5-2s between enabling

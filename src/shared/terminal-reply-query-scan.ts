@@ -1,3 +1,4 @@
+import { detachString } from './detached-string'
 import { findCsiFinalByteIndex } from './terminal-reply-query-extraction'
 import { parseTerminalOscColorQuery } from './terminal-osc-color-reply'
 
@@ -45,8 +46,11 @@ function isReplyElicitingCsi(sequence: string): boolean {
   )
 }
 
+// Detached: the returned pending prefix is parked in per-stream scan state
+// until the next chunk, so an attached slice would pin a whole PTY chunk for
+// every buffering terminal stream.
 function boundedPending(input: string, startIndex: number): string {
-  return input.slice(startIndex, startIndex + MAX_PENDING_QUERY_CHARS)
+  return detachString(input.slice(startIndex, startIndex + MAX_PENDING_QUERY_CHARS))
 }
 
 export function scanTerminalReplyQuerySequences(

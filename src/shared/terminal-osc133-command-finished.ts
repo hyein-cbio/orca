@@ -8,6 +8,8 @@
  * terminators, best-effort exit codes) must be identical in both.
  */
 
+import { detachString } from './detached-string'
+
 type OscTerminator = {
   index: number
   length: number
@@ -87,10 +89,14 @@ export function createOsc133CommandFinishedScanner(
       const payloadStart = start + OSC_133_PREFIX.length
       const terminator = findOscTerminator(combined, payloadStart)
       if (!terminator) {
-        carry = combined.slice(start)
-        if (carry.length > MAX_OSC_CARRY_LENGTH) {
-          carry = carry.slice(carry.length - MAX_OSC_CARRY_LENGTH)
-        }
+        const pending = combined.slice(start)
+        // Detached: the carry outlives this chunk in the scanner closure (one per
+        // pane), so an attached slice would pin the whole chunk until the next one.
+        carry = detachString(
+          pending.length > MAX_OSC_CARRY_LENGTH
+            ? pending.slice(pending.length - MAX_OSC_CARRY_LENGTH)
+            : pending
+        )
         return
       }
 

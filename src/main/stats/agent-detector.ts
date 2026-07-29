@@ -1,5 +1,6 @@
 import { extractLastOscTitle, detectAgentStatusFromTitle } from '../../shared/agent-detection'
 import type { AgentStatus } from '../../shared/agent-detection'
+import { detachString } from '../../shared/detached-string'
 import { extractOscTitleScanTail } from '../../shared/osc-title-scan-tail'
 import type { StatsCollector } from './collector'
 
@@ -285,11 +286,13 @@ function isStTerminatedStringControlIntroducer(introducer: string): boolean {
   return introducer === 'P' || introducer === 'X' || introducer === '^' || introducer === '_'
 }
 
+// Detached because meaningfulContentScanTailByPtyId parks this until the next
+// chunk: an attached slice pins a whole source chunk per tracked PTY.
 function trimMeaningfulContentScanTail(value: string): string {
   if (value.length <= MEANINGFUL_CONTENT_SCAN_TAIL_LIMIT) {
-    return value
+    return detachString(value)
   }
   const introducer = value.slice(0, Math.min(2, value.length))
   const suffixBudget = Math.max(0, MEANINGFUL_CONTENT_SCAN_TAIL_LIMIT - introducer.length)
-  return `${introducer}${value.slice(-suffixBudget)}`
+  return detachString(`${introducer}${value.slice(-suffixBudget)}`)
 }

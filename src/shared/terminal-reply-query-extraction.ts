@@ -4,6 +4,7 @@
 // to drop: the renderer's hidden-output restore queue and main's pending-cap
 // bulk drop. A swallowed query means the program that sent it waits forever
 // for a reply (the bench DSR timeout).
+import { detachString } from './detached-string'
 import { parseTerminalOscColorQuery } from './terminal-osc-color-reply'
 
 export const HIDDEN_STARTUP_RENDERER_QUERY_PENDING_CHARS = 64
@@ -13,6 +14,13 @@ export type ExtractedRendererQueryData = {
   statefulQueryData: string
   oscColorQueryData: string
   pending: string
+}
+
+// Detached: callers park `pending` until the next chunk — one per pane in the
+// renderer (hiddenStartupRendererQueryPending, pty-connection.ts) — so an
+// attached slice would pin a whole PTY chunk for as long as the pane lives.
+function detachedQueryPending(input: string, start: number): string {
+  return detachString(input.slice(start, start + HIDDEN_STARTUP_RENDERER_QUERY_PENDING_CHARS))
 }
 
 export function extractHiddenStartupRendererQueryData(
@@ -45,10 +53,7 @@ export function extractHiddenStartupRendererQueryData(
           statelessQueryData,
           statefulQueryData,
           oscColorQueryData,
-          pending: input.slice(
-            candidateIndex,
-            candidateIndex + HIDDEN_STARTUP_RENDERER_QUERY_PENDING_CHARS
-          )
+          pending: detachedQueryPending(input, candidateIndex)
         }
       }
       const sequence = input.slice(candidateIndex, finalByteIndex + 1)
@@ -68,10 +73,7 @@ export function extractHiddenStartupRendererQueryData(
           statelessQueryData,
           statefulQueryData,
           oscColorQueryData,
-          pending: input.slice(
-            candidateIndex,
-            candidateIndex + HIDDEN_STARTUP_RENDERER_QUERY_PENDING_CHARS
-          )
+          pending: detachedQueryPending(input, candidateIndex)
         }
       }
       if (query.kind === 'none') {

@@ -9,6 +9,7 @@ import {
   isShellProcess,
   normalizeTerminalTitle
 } from '../../shared/agent-detection'
+import { detachString } from '../../shared/detached-string'
 import { extractOscTitleScanTail } from '../../shared/osc-title-scan-tail'
 import { extractLastOsc7Uri, extractOscScanTail } from '../daemon/osc7-uri-extraction'
 import { parseFileUriPathParts } from '../daemon/osc7-file-uri'
@@ -7963,7 +7964,9 @@ export class OrcaRuntimeService {
     }
     const appendedLower = appendedText.toLowerCase()
     const keywordHit = WAIT_BLOCKED_KEYWORD_PATTERN.test(`${state.keywordCarry}${appendedLower}`)
-    state.keywordCarry = appendedLower.slice(-WAIT_BLOCKED_KEYWORD_CARRY_CHARS)
+    // Detached: keywordCarry is parked per PTY until the next chunk, so an
+    // attached slice would pin the whole lowercased chunk per tracked PTY.
+    state.keywordCarry = detachString(appendedLower.slice(-WAIT_BLOCKED_KEYWORD_CARRY_CHARS))
     // Why the cap keeps the tail: the accumulated text only anchors boundary-
     // spanning prompt detection; anything past the tail cap has scrolled out
     // of the retained tail the check reads anyway.

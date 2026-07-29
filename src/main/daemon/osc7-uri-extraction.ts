@@ -1,3 +1,5 @@
+import { detachString } from '../../shared/detached-string'
+
 const OSC7_PREFIX = '\x1b]7;'
 const ESC_CODE_UNIT = 0x1b
 const BEL_CODE_UNIT = 0x07
@@ -65,6 +67,10 @@ export function extractLastOsc7Uri(data: string): string | null {
   return lastUri
 }
 
+// Callers park this tail until the next chunk arrives — osc7ScanTailByPtyId in
+// orca-runtime.ts, TerminalOscCwdTitleScanner.scanTail in the daemon — so the
+// returned slice is detached; otherwise each carried tail pins a whole source
+// chunk for as long as its PTY or scanner stays alive.
 export function extractOscScanTail(input: string, limit: number): string {
   const lastOsc = input.lastIndexOf('\x1b]')
   const lastEscape = input.endsWith('\x1b') ? input.length - 1 : -1
@@ -77,5 +83,5 @@ export function extractOscScanTail(input: string, limit: number): string {
   if (suffix.includes('\x07') || suffix.includes('\x1b\\')) {
     return ''
   }
-  return suffix.slice(-limit)
+  return detachString(suffix.slice(-limit))
 }

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createForceGc, resolveForcedGc } from '../../shared/forced-gc-for-retention-tests'
 import { AgentDetector } from './agent-detector'
 
 afterEach(() => {
@@ -240,5 +241,33 @@ describe('AgentDetector', () => {
 
     expect(stats.onAgentStart).toHaveBeenCalledWith('pty-1', 100)
     expect(stats.onAgentStop).toHaveBeenCalledWith('pty-1', 120)
+  })
+
+  // meaningfulContentScanTailByPtyId parks the tail until the next chunk, so
+  // an attached slice pins one whole source chunk per tracked PTY.
+  const forcedGc = resolveForcedGc()
+  const itWithGc = forcedGc ? it : it.skip
+  itWithGc('does not pin source chunks behind carried per-PTY scan tails', () => {
+    const chunkChars = 16 * 1024
+    const ptys = 512
+    const forceGc = createForceGc(forcedGc!)
+    const stats = { onAgentStart: vi.fn(), onAgentStop: vi.fn() }
+    const detector = new AgentDetector(stats as never)
+    for (let index = 0; index < ptys; index += 1) {
+      detector.onData(`pty-${index}`, oscTitle('⠂ Writing patch'), 100)
+    }
+
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    for (let index = 0; index < ptys; index += 1) {
+      // Ends mid-CSI, so the tail is carried into the next chunk.
+      detector.onData(`pty-${index}`, `${'y'.repeat(chunkChars)}\x1b[38;2;12;34;5`, 200)
+    }
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    expect(detector.trackedPtyCount).toBe(ptys)
+    // 8 MiB of source chunks stay alive if the tails are still attached.
+    expect(retainedMiB).toBeLessThan(2)
   })
 })

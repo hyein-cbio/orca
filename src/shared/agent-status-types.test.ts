@@ -13,6 +13,7 @@ import {
   AGENT_STATUS_STATES,
   AGENT_TYPE_MAX_LENGTH
 } from './agent-status-types'
+import { createForceGc, resolveForcedGc } from './forced-gc-for-retention-tests'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -239,6 +240,57 @@ Fix dispatch fallback preview for normalized status prompts`
     )
     expect(result!.interactivePrompt).toHaveLength(AGENT_STATUS_INTERACTIVE_PROMPT_MAX_LENGTH)
     expect(AGENT_STATUS_INTERACTIVE_PROMPT_MAX_LENGTH).toBe(16000)
+  })
+
+  // The capped value is cached in the store; if truncation returned a raw
+  // slice it would keep the whole oversized payload alive.
+  const forcedGc = resolveForcedGc()
+  const itWithGc = forcedGc ? it : it.skip
+  itWithGc('does not pin the oversized payload behind a capped interactivePrompt', () => {
+    const oversize = 2 * 1024 * 1024
+    const payloads = 64
+    const forceGc = createForceGc(forcedGc!)
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    const held = Array.from({ length: payloads }, (_unused, index) =>
+      normalizeAgentStatusPayload({
+        state: 'waiting',
+        interactivePrompt: `{"questions":["q-${index}"`.padEnd(oversize, 'z')
+      })
+    )
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    expect(held[0]!.interactivePrompt).toHaveLength(AGENT_STATUS_INTERACTIVE_PROMPT_MAX_LENGTH)
+    // 128 MiB of source payloads stay alive if the capped slice is still attached.
+    expect(retainedMiB).toBeLessThan(16)
+  })
+
+  // An under-cap prompt pins nothing (it is the caller's own flat string), so
+  // it must be passed through by identity rather than copied on every hook
+  // event — this path fires many times per second during a tool-use run.
+  itWithGc('returns an under-cap interactivePrompt without copying it', () => {
+    const source = JSON.stringify({
+      questions: [{ question: 'Which approach?', options: ['a'.repeat(4000), 'b'.repeat(4000)] }]
+    })
+    expect(source.length).toBeLessThan(AGENT_STATUS_INTERACTIVE_PROMPT_MAX_LENGTH)
+    const forceGc = createForceGc(forcedGc!)
+    const repeats = 20_000
+
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    const held = Array.from(
+      { length: repeats },
+      () =>
+        normalizeAgentStatusPayload({ state: 'waiting', interactivePrompt: source })!
+          .interactivePrompt
+    )
+    forceGc()
+    const bytesPerCall = (process.memoryUsage().heapUsed - before) / repeats
+
+    expect(held[0]).toBe(source)
+    // A copy would cost ~source.length bytes per call; identity costs a pointer.
+    expect(bytesPerCall).toBeLessThan(source.length / 4)
   })
 
   it('leaves interactivePrompt undefined when absent or non-string', () => {

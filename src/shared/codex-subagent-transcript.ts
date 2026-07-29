@@ -6,6 +6,7 @@ import {
   upsertCodexSubagent,
   type CodexSubagentRoster
 } from './codex-subagent-roster'
+import { detachString } from './detached-string'
 
 const TRANSCRIPT_READ_MAX_BYTES = 1024 * 1024
 const TRANSCRIPT_LINE_MAX_BYTES = 256 * 1024
@@ -77,7 +78,10 @@ function readJsonlCursor(cursor: JsonlCursor): JsonRecord[] | undefined {
   const content = `${skippedPrefix ? '' : cursor.carry}${buffer.toString('utf8', 0, bytesRead)}`
   const lines = content.split('\n')
   cursor.offset = start + bytesRead
-  cursor.carry = lines.pop() ?? ''
+  // Detached: `split` yields slices of the up-to-1 MiB read buffer, and this
+  // carry is parked per cursor (one per pane, plus one per tracked subagent, in
+  // codexSubagentTranscriptByPaneKey) until the next poll.
+  cursor.carry = detachString(lines.pop() ?? '')
   if (skippedPrefix) {
     lines.shift()
   }

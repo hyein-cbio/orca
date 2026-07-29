@@ -1,3 +1,5 @@
+import { detachString } from './detached-string'
+
 // Why: PTY/SSH chunks can split an escape sequence before its final byte.
 // Keep parser state far beyond normal sequence lengths while bounding memory.
 const KITTY_SCAN_TAIL_LIMIT = 4096
@@ -169,6 +171,10 @@ export class TerminalKittyKeyboardModeTracker {
     }
   }
 
+  // Detached: this tracker is per-pane (renderer) and per-PTY (main), and the
+  // tail outlives its input until the next chunk. An attached slice would pin
+  // the whole input — a live PTY chunk, or a full reattach/replay snapshot on
+  // the scanReplay path — for as long as the pane stays open.
   private extractScanTail(input: string): string {
     const start = Math.max(input.lastIndexOf('\x1b'), input.lastIndexOf('\x9b'))
     if (start === -1) {
@@ -189,7 +195,7 @@ export class TerminalKittyKeyboardModeTracker {
     if (body === null) {
       return ''
     }
-    return this.isIncompleteSequenceBody(body) ? tail : ''
+    return this.isIncompleteSequenceBody(body) ? detachString(tail) : ''
   }
 
   private isIncompleteSequenceBody(body: string): boolean {

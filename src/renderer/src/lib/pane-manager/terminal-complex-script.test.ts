@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createForceGc, resolveForcedGc } from '../../../../shared/forced-gc-for-retention-tests'
 import {
   nativeWindowsRewriteNeedsFollowupRenderRefresh,
   terminalOutputContainsEastAsianRendererRisk,
@@ -402,5 +403,49 @@ describe('nativeWindowsRewriteNeedsFollowupRenderRefresh', () => {
         isInPlaceRewrite: true
       })
     ).toBe(false)
+  })
+})
+
+// The rewrite-CSI scan tail is parked in per-pane closure state
+// (foreground/hiddenRewriteCsiScanTail in pty-connection.ts) until the next
+// chunk, so an attached slice pins a whole PTY chunk per open pane.
+//
+// Why the split CSI is long: V8 only builds a SlicedString past
+// SlicedString::kMinLength (13 chars); a shorter tail is already copied flat
+// and would make this assertion pass with or without the detach.
+describe('rewrite CSI scan tail retention', () => {
+  const splitCsi = '\x1b[1;2;3;4;5;6;7;8;9'
+  const forcedGc = resolveForcedGc()
+  const itWithGc = forcedGc ? it : it.skip
+  itWithGc('does not pin the source chunk behind a carried rewrite CSI tail', () => {
+    const chunkChars = 16 * 1024
+    const panes = 512
+    const forceGc = createForceGc(forcedGc!)
+    expect(splitCsi.length).toBeGreaterThanOrEqual(13)
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    const tails = Array.from(
+      { length: panes },
+      (_unused, index) =>
+        // A distinct chunk per pane, each ending mid-CSI. Sharing one chunk
+        // would leave a single parent alive and pass either way.
+        terminalRewriteOutputRenderRefreshDecision(
+          `${'x'.repeat(chunkChars)}pane-${index}${splitCsi}`,
+          { previousChunkEndsWithCarriageReturn: false, previousRewriteCsiScanTail: '' }
+        ).nextRewriteCsiScanTail
+    )
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    // The tail must still complete the erase sequence across the boundary.
+    expect(tails[0]).toBe(splitCsi)
+    expect(
+      terminalRewriteOutputRenderRefreshDecision('K', {
+        previousChunkEndsWithCarriageReturn: false,
+        previousRewriteCsiScanTail: tails[0]!
+      }).prefersRenderRefresh
+    ).toBe(true)
+    // 8 MiB of source chunks stay alive if the carried tails are attached.
+    expect(retainedMiB).toBeLessThan(2)
   })
 })

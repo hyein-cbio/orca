@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createForceGc, resolveForcedGc } from './forced-gc-for-retention-tests'
 import { TerminalKittyKeyboardModeTracker } from './terminal-kitty-keyboard-mode-tracker'
 
 describe('TerminalKittyKeyboardModeTracker', () => {
@@ -146,5 +147,60 @@ describe('TerminalKittyKeyboardModeTracker', () => {
     const ranAndExited = new TerminalKittyKeyboardModeTracker()
     ranAndExited.scanReplay('\x1b[>1uoutput\x1b[<u')
     expect(ranAndExited.flags).toBe(0)
+  })
+
+  // One tracker per pane (renderer) and per PTY (main) holds the scan tail
+  // until the next chunk, so an attached slice pins a whole PTY chunk each.
+  //
+  // Why the tail is long: V8 only builds a SlicedString past
+  // SlicedString::kMinLength (13 chars); a shorter tail is already copied flat
+  // and would make this assertion pass with or without the detach.
+  const splitPrivateModeTail = '\x1b[?1049;2004;2026;1234'
+  const forcedGc = resolveForcedGc()
+  const itWithGc = forcedGc ? it : it.skip
+  itWithGc('does not pin the source chunk behind a carried kitty scan tail', () => {
+    const chunkChars = 16 * 1024
+    const panes = 512
+    const forceGc = createForceGc(forcedGc!)
+    expect(splitPrivateModeTail.length).toBeGreaterThanOrEqual(13)
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    const trackers = Array.from({ length: panes }, (_unused, index) => {
+      const tracker = new TerminalKittyKeyboardModeTracker()
+      // Ends mid-DECSET, so the params tail is carried into the next chunk.
+      tracker.scan(`${'x'.repeat(chunkChars)}pty-${index}${splitPrivateModeTail}`)
+      return tracker
+    })
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    // The carry must still complete the split sequence across the boundary.
+    trackers[0]!.scan('9h')
+    expect(trackers[0]!.isAlternateScreen).toBe(true)
+    // 8 MiB of source chunks stay alive if the tails are still attached.
+    expect(retainedMiB).toBeLessThan(2)
+  })
+
+  // scanReplay is fed whole reattach snapshots, not 16 KiB PTY chunks, so an
+  // attached tail pins far more per pane than the live path does.
+  itWithGc('does not pin a reattach snapshot behind a carried kitty scan tail', () => {
+    // A default 5000-row scrollback snapshot at ~120 chars/row.
+    const snapshotChars = 5000 * 120
+    const panes = 20
+    const forceGc = createForceGc(forcedGc!)
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    const trackers = Array.from({ length: panes }, (_unused, index) => {
+      const tracker = new TerminalKittyKeyboardModeTracker()
+      tracker.scanReplay(`${'x'.repeat(snapshotChars)}pane-${index}${splitPrivateModeTail}`)
+      return tracker
+    })
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    trackers[0]!.scan('9h')
+    expect(trackers[0]!.isAlternateScreen).toBe(true)
+    // ~11 MiB of snapshots stay alive if the tails are still attached.
+    expect(retainedMiB).toBeLessThan(2)
   })
 })

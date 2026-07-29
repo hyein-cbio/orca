@@ -1,3 +1,4 @@
+import { detachString } from './detached-string'
 import type { GlobalSettings } from './types'
 
 export type TerminalColorSchemeMode = 'dark' | 'light'
@@ -131,6 +132,8 @@ function hasMode2031(params: string): boolean {
   return params.split(';').some((param) => Number(param) === 2031)
 }
 
+// Detached: the retained tail is carried in per-pane scan state until the next
+// chunk, so an attached slice pins a whole PTY chunk per pane.
 function extractPrivateModeScanTail(input: string): string {
   const start = Math.max(input.lastIndexOf('\x1b'), input.lastIndexOf('\x9b'))
   if (start === -1) {
@@ -144,10 +147,10 @@ function extractPrivateModeScanTail(input: string): string {
     return tail
   }
   if (tail.startsWith('\x1b[?')) {
-    return isIncompletePrivateModeParams(tail.slice(3)) ? tail : ''
+    return isIncompletePrivateModeParams(tail.slice(3)) ? detachString(tail) : ''
   }
   if (tail.startsWith('\x9b?')) {
-    return isIncompletePrivateModeParams(tail.slice(2)) ? tail : ''
+    return isIncompletePrivateModeParams(tail.slice(2)) ? detachString(tail) : ''
   }
   return ''
 }

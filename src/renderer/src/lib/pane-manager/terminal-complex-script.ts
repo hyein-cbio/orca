@@ -1,6 +1,8 @@
 // Why: some foreground ANSI redraws paint background fills before glyphs settle.
 // Detect those chunks so the terminal can force a narrow viewport refresh
 // without switching renderers based on the text content.
+import { detachString } from '../../../../shared/detached-string'
+
 const EMOJI_PRESENTATION_PATTERN = /\p{Emoji_Presentation}/u
 const ESCAPE_CHARACTER = String.fromCharCode(0x1b)
 const REWRITE_CSI_SCAN_TAIL_MAX_CHARS = 64
@@ -139,6 +141,9 @@ function containsRewriteEraseSequence(data: string): boolean {
   return false
 }
 
+// Detached: callers park this tail in per-pane closure state (foreground/hidden
+// RewriteCsiScanTail in pty-connection.ts) until the next chunk, so an attached
+// slice pins a whole PTY chunk per open pane.
 function trailingIncompleteRewriteCsiTail(data: string): string {
   const escapeIndex = data.lastIndexOf(ESCAPE_CHARACTER)
   if (escapeIndex === -1) {
@@ -164,7 +169,7 @@ function trailingIncompleteRewriteCsiTail(data: string): string {
     }
     return ''
   }
-  return tail
+  return detachString(tail)
 }
 
 export function terminalRewriteOutputPrefersRenderRefresh(data: string): boolean {

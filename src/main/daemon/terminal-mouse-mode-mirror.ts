@@ -1,3 +1,4 @@
+import { detachString } from '../../shared/detached-string'
 import type { TerminalModes } from './types'
 
 type MouseTrackingMode = NonNullable<TerminalModes['mouseTrackingMode']>
@@ -92,6 +93,8 @@ export class TerminalMouseModeMirror {
     }
   }
 
+  // Detached: one mirror per daemon session holds this tail until the next
+  // chunk, so an attached slice pins a whole PTY chunk per live session.
   private extractScanTail(input: string): string {
     const start = Math.max(input.lastIndexOf('\x1b'), input.lastIndexOf('\x9b'))
     if (start === -1) {
@@ -105,10 +108,10 @@ export class TerminalMouseModeMirror {
       return tail
     }
     if (tail.startsWith('\x1b[?')) {
-      return this.isIncompleteParams(tail.slice(3)) ? tail : ''
+      return this.isIncompleteParams(tail.slice(3)) ? detachString(tail) : ''
     }
     if (tail.startsWith('\x9b?')) {
-      return this.isIncompleteParams(tail.slice(2)) ? tail : ''
+      return this.isIncompleteParams(tail.slice(2)) ? detachString(tail) : ''
     }
     return ''
   }

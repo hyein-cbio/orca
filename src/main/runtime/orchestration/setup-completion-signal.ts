@@ -1,3 +1,4 @@
+import { detachString } from '../../../shared/detached-string'
 import {
   resolveSetupRunnerCommand,
   type SetupRunnerCommandPlatform
@@ -66,7 +67,9 @@ export function createSetupCompletionScanner(
           return
         }
       }
-      carry = combined.slice(-SETUP_COMPLETION_CARRY_LENGTH)
+      // Detached: the carry is held per running setup until its next chunk, so
+      // an attached slice would pin a whole setup-output chunk each.
+      carry = detachString(combined.slice(-SETUP_COMPLETION_CARRY_LENGTH))
     }
   }
 }

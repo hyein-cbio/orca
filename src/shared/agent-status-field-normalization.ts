@@ -4,6 +4,7 @@
 // truncate without splitting surrogate pairs. Extracted from
 // agent-status-types.ts, which owns the payload shapes and per-field caps.
 
+import { detachString } from './detached-string'
 import {
   compactDispatchPromptForStatus,
   isOrcaDispatchStatusPrompt
@@ -189,8 +190,16 @@ export function normalizeInteractivePromptField(
   if (typeof value !== 'string' || value.length === 0) {
     return undefined
   }
+  // Why detach: this field is cached in the store, so an over-cap value's
+  // truncated slice would otherwise pin the whole original string.
+  // Why only when truncation happened: an under-cap value is returned by
+  // identity, is already flat (JSON.parse / JSON.stringify output), and pins
+  // nothing — detaching it would copy the payload on every hook event.
   const truncated = truncatePreservingSurrogates(value, maxLength)
-  return truncated.length > 0 ? truncated : undefined
+  if (truncated.length === 0) {
+    return undefined
+  }
+  return truncated === value ? truncated : detachString(truncated)
 }
 
 export function normalizeOptionalField(value: unknown, maxLength: number): string | undefined {

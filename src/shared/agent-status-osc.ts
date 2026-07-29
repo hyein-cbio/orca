@@ -1,5 +1,6 @@
 import type { ParsedAgentStatusPayload } from './agent-status-types'
 import { parseAgentStatusPayload } from './agent-status-types'
+import { detachString } from './detached-string'
 
 const OSC_AGENT_STATUS_PREFIX = '\x1b]9999;'
 
@@ -70,7 +71,9 @@ export function createAgentStatusOscProcessor(): (data: string) => ProcessedAgen
 
       if (terminator === null) {
         const candidate = combined.slice(start)
-        pending = candidate.length > MAX_PENDING ? '' : candidate
+        // Detached: `pending` survives until the next chunk, so an attached
+        // slice would pin this whole chunk per processor (one per pane).
+        pending = candidate.length > MAX_PENDING ? '' : detachString(candidate)
         break
       }
 

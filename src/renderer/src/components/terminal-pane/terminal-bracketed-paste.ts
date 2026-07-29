@@ -1,4 +1,5 @@
 import type { Terminal } from '@xterm/xterm'
+import { detachString } from '../../../../shared/detached-string'
 
 type BracketedPasteTerminal = {
   modes: {
@@ -98,7 +99,12 @@ export function observeTerminalBracketedPasteModeOutput(
     return
   }
   const combined = (bracketedPasteModeOutputTail.get(terminal) ?? '') + data
-  bracketedPasteModeOutputTail.set(terminal, combined.slice(-BRACKETED_PASTE_MODE_TAIL_MAX))
+  // Detached: this tail is parked in a per-terminal WeakMap until the pane sees
+  // a 2004 toggle, so an attached slice pins a whole PTY chunk per interrupted pane.
+  bracketedPasteModeOutputTail.set(
+    terminal,
+    detachString(combined.slice(-BRACKETED_PASTE_MODE_TAIL_MAX))
+  )
   if (hasBracketedPasteModeSequence(combined)) {
     interruptedBracketedPasteTerminals.delete(terminal)
     bracketedPasteModeOutputTail.delete(terminal)

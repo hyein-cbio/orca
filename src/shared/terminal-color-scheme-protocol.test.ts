@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createForceGc, resolveForcedGc } from './forced-gc-for-retention-tests'
 import {
   mode2031SequenceFor,
   resolveTerminalColorSchemeMode,
@@ -50,5 +51,28 @@ describe('terminal color scheme protocol', () => {
       finalState: 'subscribed',
       tail: ''
     })
+  })
+
+  // The incomplete private-mode tail is carried in per-pane scan state until the
+  // next chunk, so an attached slice pins a whole PTY chunk per pane.
+  const forcedGc = resolveForcedGc()
+  const itWithGc = forcedGc ? it : it.skip
+  itWithGc('does not pin the source chunk behind a carried private-mode tail', () => {
+    const chunkChars = 16 * 1024
+    const panes = 512
+    const forceGc = createForceGc(forcedGc!)
+    forceGc()
+    const before = process.memoryUsage().heapUsed
+    const tails = Array.from(
+      { length: panes },
+      // No final byte yet, so the params tail is carried to the next chunk.
+      () => scanMode2031Sequences('', `${'x'.repeat(chunkChars)}\x1b[?1049;2004;2026;12345`).tail
+    )
+    forceGc()
+    const retainedMiB = (process.memoryUsage().heapUsed - before) / (1024 * 1024)
+
+    expect(tails[0]).toBe('\x1b[?1049;2004;2026;12345')
+    // 8 MiB of source chunks stay alive if the tails are still attached.
+    expect(retainedMiB).toBeLessThan(2)
   })
 })

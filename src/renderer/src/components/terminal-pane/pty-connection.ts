@@ -10,6 +10,7 @@ import { resolveLiveAgentStatusConnectionRouting } from '@/lib/agent-status-conn
 import { scheduleRuntimeGraphSync } from '@/runtime/sync-runtime-graph'
 import { useAppStore } from '@/store'
 import { getWorktreeMapFromState } from '@/store/selectors'
+import { detachString } from '../../../../shared/detached-string'
 import { parseWorkspaceKey } from '../../../../shared/workspace-scope'
 import { FLOATING_TERMINAL_WORKTREE_ID } from '../../../../shared/constants'
 import { isEphemeralSetupTerminalWorktreeId } from '../../../../shared/ephemeral-setup-terminal-worktree-id'
@@ -5183,7 +5184,9 @@ export function connectPanePty(
           return ''
         }
       }
-      return tail.slice(-TERMINAL_RENDERER_RISK_SCAN_TAIL_CHARS)
+      // Detached: this tail is parked per pane until the next chunk, so an
+      // attached slice would pin a whole PTY chunk for the pane's lifetime.
+      return detachString(tail.slice(-TERMINAL_RENDERER_RISK_SCAN_TAIL_CHARS))
     }
 
     function foregroundRendererRiskOutputPrefersRenderRefresh(data: string): boolean {

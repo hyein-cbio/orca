@@ -6,6 +6,8 @@
 // partial sequence at the ingest boundary lets snapshot producers append it
 // after the serialized screen so the continuation completes exactly as live.
 
+import { detachString } from './detached-string'
+
 // Mirrors the VT500 parser states that can span a chunk boundary. C0 controls
 // (except ESC/CAN/SUB) execute mid-sequence without aborting it, matching
 // xterm's state machine.
@@ -145,5 +147,9 @@ export function extractPartialEscapeTail(stream: string): string {
  *  (tracking abandoned) when the tail exceeds the cap — see the cap comment. */
 export function advancePartialEscapeTail(pendingTail: string, chunk: string): string {
   const tail = extractPartialEscapeTail(pendingTail + chunk)
-  return tail.length > MAX_PARTIAL_ESCAPE_TAIL_LENGTH ? '' : tail
+  // Detached: this is the ingest-time fold, so callers park the result per
+  // emulator/session until the next write; an attached slice would pin the
+  // whole written stream. Detaching after the cap check keeps the discarded
+  // over-cap tail (an unterminated OSC can span the entire chunk) free.
+  return tail.length > MAX_PARTIAL_ESCAPE_TAIL_LENGTH ? '' : detachString(tail)
 }
